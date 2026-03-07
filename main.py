@@ -1,9 +1,10 @@
 import sys
 from PySide6.QtWidgets import (QApplication, QMainWindow, QSplitter, QTextEdit,
-QFileDialog, QMessageBox, QDialog, QVBoxLayout,
-QLabel, QPushButton, QTextBrowser)
+                               QFileDialog, QMessageBox, QDialog, QVBoxLayout,
+                               QLabel, QPushButton, QTextBrowser)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
+
 
 class TextEditor(QMainWindow):
     def __init__(self):
@@ -116,11 +117,22 @@ class TextEditor(QMainWindow):
         self.select_all_action.triggered.connect(self.editor.selectAll)
         edit_menu.addAction(self.select_all_action)
         
-
         text_menu = menubar.addMenu("Текст")
-        text_menu.addAction("Постановка задачи")
-        text_menu.addAction("Грамматика")
-        text_menu.addAction("Классификация грамматики")
+        
+        # Постановка задачи
+        self.task_action = QAction("Постановка задачи", self)
+        self.task_action.triggered.connect(self.show_task)
+        text_menu.addAction(self.task_action)
+        
+        # Грамматика
+        self.grammar_action = QAction("Грамматика", self)
+        self.grammar_action.triggered.connect(self.show_grammar)
+        text_menu.addAction(self.grammar_action)
+        
+        # Классификация грамматики
+        self.classification_action = QAction("Классификация грамматики", self)
+        self.classification_action.triggered.connect(self.show_classification)
+        text_menu.addAction(self.classification_action)
         
         self.start_menu = menubar.addMenu("Пуск")
         self.start_action = QAction("Запуск анализатора", self)
@@ -303,7 +315,7 @@ class TextEditor(QMainWindow):
         </ul>
         
         <p>Версия: 1.0.0</p>
-        <p>Дата: 12.02.2026</p>
+        <p>Дата: 07.03.2026</p>
         """)
         
         layout.addWidget(text_browser)
@@ -324,9 +336,81 @@ class TextEditor(QMainWindow):
             "<p>Версия: 1.0.0</p>"
             "<p>Лабораторная работа №1</p>"
             "<p>Текстовый редактор с графическим интерфейсом</p>"
-            "<p>Разработчик: Диана</p>"
-            "<p>2024</p>"
+            "<p>Разработчик: Базыкина Диана</p>"
+            "<p>2026</p>"
         )
+
+    # ========== МЕТОДЫ ДЛЯ МЕНЮ "ТЕКСТ" ==========
+    
+    def show_task(self):
+        """Постановка задачи"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Постановка задачи")
+        dialog.resize(600, 400)
+        
+        layout = QVBoxLayout()
+        
+        text = QTextBrowser()
+        text.setHtml("""
+        <h1>Постановка задачи</h1>
+        <p>Разработать текстовый редактор с графическим интерфейсом.</p>
+        <p>В дальнейшем редактор будет дополнен функциями языкового процессора.</p>
+        """)
+        
+        layout.addWidget(text)
+        
+        btn = QPushButton("Закрыть")
+        btn.clicked.connect(dialog.close)
+        layout.addWidget(btn)
+        
+        dialog.setLayout(layout)
+        dialog.exec()
+        
+    def show_grammar(self):
+        """Грамматика"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Грамматика")
+        dialog.resize(600, 400)
+        
+        layout = QVBoxLayout()
+        
+        text = QTextBrowser()
+        text.setHtml("""
+        <h1>Грамматика</h1>
+        <p>G = (V<sub>T</sub>, V<sub>N</sub>, P, S)</p>
+        """)
+        
+        layout.addWidget(text)
+        
+        btn = QPushButton("Закрыть")
+        btn.clicked.connect(dialog.close)
+        layout.addWidget(btn)
+        
+        dialog.setLayout(layout)
+        dialog.exec()
+    
+    def show_classification(self):
+        """Классификация грамматики"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Классификация грамматики")
+        dialog.resize(600, 400)
+        
+        layout = QVBoxLayout()
+        
+        text = QTextBrowser()
+        text.setHtml("""
+        <h1>Классификация грамматики</h1>
+        <p>Тип 2 - Контекстно-свободная грамматика</p>
+        """)
+        
+        layout.addWidget(text)
+        
+        btn = QPushButton("Закрыть")
+        btn.clicked.connect(dialog.close)
+        layout.addWidget(btn)
+        
+        dialog.setLayout(layout)
+        dialog.exec()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
