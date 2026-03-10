@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QSplitter, QTextEdit,
                                QFileDialog, QMessageBox, QDialog, QVBoxLayout,
                                QLabel, QPushButton, QTextBrowser)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence, QIcon
 
 
 class TextEditor(QMainWindow):
@@ -17,6 +17,10 @@ class TextEditor(QMainWindow):
         self.current_file = None
         self.is_modified = False
         
+        # Установка иконки приложения
+        app_icon = QIcon("static/Приложение.png")
+        self.setWindowIcon(app_icon)
+
         # ========== СОЗДАЕМ ИНТЕРФЕЙС ==========
         self.setup_ui()
         self.create_menus()
@@ -43,13 +47,20 @@ class TextEditor(QMainWindow):
         
         self.setCentralWidget(splitter)
     
+    def load_icon(self, name):
+        """Загрузка иконки из папки static"""
+        icon_path = f"static/{name}.png"
+        icon = QIcon(icon_path)
+        return icon
+    
     def create_menus(self):
         """Создание главного меню"""
         menubar = self.menuBar()
         
         file_menu = menubar.addMenu("Файл")
+        file_menu.setIcon(self.load_icon("Файл"))
         
-        self.new_action = QAction("Создать", self)
+        self.new_action = QAction("Создать", self) 
         self.new_action.setShortcut(QKeySequence.New)
         self.new_action.triggered.connect(self.new_file)
         file_menu.addAction(self.new_action)
@@ -77,6 +88,7 @@ class TextEditor(QMainWindow):
         file_menu.addAction(self.exit_action)
         
         edit_menu = menubar.addMenu("Правка")
+        edit_menu.setIcon(self.load_icon("Правка"))
         
         self.undo_action = QAction("Отменить", self)
         self.undo_action.setShortcut(QKeySequence.Undo)
@@ -117,29 +129,27 @@ class TextEditor(QMainWindow):
         self.select_all_action.triggered.connect(self.editor.selectAll)
         edit_menu.addAction(self.select_all_action)
         
-        text_menu = menubar.addMenu("Текст")
+        text_menu = menubar.addMenu(self.load_icon("Текст"), "Текст")
         
-        # Постановка задачи
-        self.task_action = QAction("Постановка задачи", self)
+        self.task_action = QAction("Постановка задачи", self) 
         self.task_action.triggered.connect(self.show_task)
         text_menu.addAction(self.task_action)
         
-        # Грамматика
         self.grammar_action = QAction("Грамматика", self)
         self.grammar_action.triggered.connect(self.show_grammar)
         text_menu.addAction(self.grammar_action)
         
-        # Классификация грамматики
-        self.classification_action = QAction("Классификация грамматики", self)
+        self.classification_action = QAction("Классификация грамматики", self) 
         self.classification_action.triggered.connect(self.show_classification)
         text_menu.addAction(self.classification_action)
         
-        self.start_menu = menubar.addMenu("Пуск")
+        self.start_menu = menubar.addMenu(self.load_icon("Пуск"), "Пуск")
+
         self.start_action = QAction("Запуск анализатора", self)
         self.start_action.triggered.connect(self.run_analyzer)
         self.start_menu.addAction(self.start_action)
         
-        help_menu = menubar.addMenu("Справка")
+        help_menu = menubar.addMenu(self.load_icon("Справка"), "Справка")
         
         self.help_action = QAction("Вызов справки", self)
         self.help_action.setShortcut("F1")
@@ -171,8 +181,7 @@ class TextEditor(QMainWindow):
         toolbar.addAction(self.start_action)
         toolbar.addAction(self.help_action)
         toolbar.addAction(self.about_action)
-    
-    
+
     def new_file(self):
         """Создать новый файл"""
         if self.maybe_save():
