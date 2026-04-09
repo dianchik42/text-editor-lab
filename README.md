@@ -2,7 +2,6 @@
 Разработчик: Базыкина Диана, АП-326
 Начало работы: Февраль 2026
 
-
 ## Описание проекта:
 Текстовый редактор с графическим интерфейсом, разработанный в рамках лабораторных работ.
 
@@ -25,11 +24,29 @@
 
 ## Установка и запуск:
 Клонировать репозиторий:
-git clone https://github.com/dianchik42/text-editor-lab.git
-cd text-editor-lab
+
+    '''git clone https://github.com/dianchik42/text-editor-lab.git
+
+    cd text-editor-lab'''
 
 Установка зависимостей:
-pip install -r requirements.txt
+
+    '''pip install -r requirements.txt'''
 
 Запуск:
-python main.py
+
+    '''python main.py'''
+
+## Руководство пользователя:
+Главное окно (с меню, областью ввода/редактирования текста, областью отображения результатов):
+
+![главноеокно](images/image.png)
+
+Открытие файла ("сохранить", "сохранить как"):
+
+![открытиефайла](images/image-1.png)
+
+Постановка задачи, справка:
+
+![постановка](images/image-2.png)
+![справка](images/image-3.png)
