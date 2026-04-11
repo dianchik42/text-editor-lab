@@ -1,4 +1,3 @@
-# scanner.py
 import re
 from grammar import (
     KEYWORDS, OPERATORS, DELIMITERS, TOKEN_TYPES,
