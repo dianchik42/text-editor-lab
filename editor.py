@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QMainWindow, QSplitter, QTextEdit,
                                QTableWidgetItem, QHeaderView)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QIcon, QTextCursor
+from syntax_parser import Parser
 
 from scanner import Scanner, Token, LexicalError
 
@@ -160,9 +161,12 @@ class TextEditor(QMainWindow):
         
         # Меню Пуск
         self.start_menu = menubar.addMenu(self.load_icon("Пуск"), "Пуск")
-        self.start_action = QAction("Запуск анализатора", self)
+        self.start_action = QAction("Лексический анализ", self)
         self.start_action.triggered.connect(self.run_analyzer)
         self.start_menu.addAction(self.start_action)
+        self.syntax_action = QAction("Синтаксический анализ", self)
+        self.syntax_action.triggered.connect(self.run_syntax_analyzer)
+        self.start_menu.addAction(self.syntax_action)
         
         # Меню Справка
         help_menu = menubar.addMenu(self.load_icon("Справка"), "Справка")
@@ -195,6 +199,7 @@ class TextEditor(QMainWindow):
         toolbar.addAction(self.paste_action)
         toolbar.addSeparator()
         toolbar.addAction(self.start_action)
+        toolbar.addAction(self.syntax_action)
         toolbar.addAction(self.help_action)
         toolbar.addAction(self.about_action)
     
@@ -339,17 +344,62 @@ class TextEditor(QMainWindow):
             f"Найдено лексем: {len(tokens)}\nОшибок: {len(errors)}"
         )
     
+    def run_syntax_analyzer(self):
+        """Запуск синтаксического анализатора"""
+        text = self.editor.toPlainText()
+        if not text.strip():
+            QMessageBox.information(self, "Синтаксический анализ", "Нет текста для анализа")
+            return
+
+        # Лексический анализ
+        tokens, lex_errors = self.scanner.scan(text)
+        if lex_errors:
+            QMessageBox.warning(self, "Ошибка", "Присутствуют лексические ошибки. Исправьте их сначала.")
+            return
+
+        # Синтаксический анализ
+        parser = Parser(tokens)
+        success = parser.parse_program()
+        errors = parser.errors
+
+        # Очищаем таблицу и настраиваем для трёх столбцов
+        self.result_table.clear()
+        self.result_table.setColumnCount(3)
+        self.result_table.setHorizontalHeaderLabels(["Неверный фрагмент", "Местоположение", "Описание ошибки"])
+        self.result_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+
+        self.result_table.setRowCount(len(errors))
+        for row, err in enumerate(errors):
+            self.result_table.setItem(row, 0, QTableWidgetItem(err.fragment))
+            location = f"строка {err.line}, позиция {err.col}"
+            self.result_table.setItem(row, 1, QTableWidgetItem(location))
+            self.result_table.setItem(row, 2, QTableWidgetItem(err.description))
+            # Для навигации сохраняем (строка, колонка)
+            self.result_table.item(row, 0).setData(Qt.UserRole, (err.line, err.col))
+
+        msg = f"Синтаксических ошибок: {len(errors)}"
+        if len(errors) == 0:
+            msg += "\nСинтаксис корректен."
+        QMessageBox.information(self, "Результат синтаксического анализа", msg)
+
     def on_table_item_clicked(self, item):
         """Обработка клика по элементу таблицы для навигации"""
         row = item.row()
         first_item = self.result_table.item(row, 0)
-        
-        if first_item and first_item.data(Qt.UserRole):
-            data = first_item.data(Qt.UserRole)
-            if data[0] == 'token' or data[0] == 'error':
-                line_num = data[1]
-                col_num = data[2]
-                self.jump_to_position(line_num, col_num)
+        if not first_item:
+            return
+        data = first_item.data(Qt.UserRole)
+        if not data:
+            return
+
+        # Синтаксический режим: данные = (line, col)
+        if isinstance(data, tuple) and len(data) == 2:
+            line_num, col_num = data
+            self.jump_to_position(line_num, col_num)
+        # Лексический режим: данные = ('token', line, col) или ('error', line, col)
+        elif isinstance(data, tuple) and len(data) == 3 and data[0] in ('token', 'error'):
+            line_num, col_num = data[1], data[2]
+            self.jump_to_position(line_num, col_num)
     
     def jump_to_position(self, line_num, col_num):
         """Перемещает курсор на указанную строку и позицию"""
