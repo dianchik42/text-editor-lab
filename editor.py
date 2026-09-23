@@ -2,11 +2,12 @@ import sys
 from PySide6.QtWidgets import (QMainWindow, QSplitter, QTextEdit,
                                QFileDialog, QMessageBox, QDialog, QVBoxLayout,
                                QLabel, QPushButton, QTextBrowser, QTableWidget,
-                               QTableWidgetItem, QHeaderView)
+                               QTableWidgetItem, QHeaderView, QComboBox)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence, QIcon, QTextCursor
+from PySide6.QtGui import QAction, QKeySequence, QIcon, QTextCursor, QColor
 from syntax_parser import Parser, SyntaxError
 
+from regex_search import RULES, find_matches
 from scanner import Scanner
 from grammar import SYNTAX_GRAMMAR
 from html import escape
@@ -22,6 +23,7 @@ class TextEditor(QMainWindow):
         
         self.current_file = None
         self.is_modified = False
+        self.result_mode = None
         
         # Сканер
         self.scanner = Scanner()
@@ -55,6 +57,9 @@ class TextEditor(QMainWindow):
         
         # Подключаем обработчик клика по таблице для навигации к ошибкам
         self.result_table.itemClicked.connect(self.on_table_item_clicked)
+        self.result_table.itemSelectionChanged.connect(self.on_result_selection_changed)
+        self.result_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.result_table.setSelectionMode(QTableWidget.SingleSelection)
         
         splitter.addWidget(self.editor)
         splitter.addWidget(self.result_table)
@@ -172,6 +177,9 @@ class TextEditor(QMainWindow):
         self.syntax_action = QAction("Синтаксический анализ", self)
         self.syntax_action.triggered.connect(self.run_syntax_analyzer)
         self.start_menu.addAction(self.syntax_action)
+        self.search_action = QAction("Поиск подстрок", self)
+        self.search_action.triggered.connect(self.run_regex_search)
+        self.start_menu.addAction(self.search_action)
         
         # Меню Справка
         help_menu = menubar.addMenu(self.load_icon("Справка"), "Справка")
@@ -207,6 +215,18 @@ class TextEditor(QMainWindow):
         toolbar.addAction(self.syntax_action)
         toolbar.addAction(self.help_action)
         toolbar.addAction(self.about_action)
+        self.addToolBarBreak()
+        search_toolbar = self.addToolBar("Поиск по регулярным выражениям")
+        search_toolbar.setMovable(False)
+        search_toolbar.addWidget(QLabel("Тип поиска: "))
+        self.search_type = QComboBox()
+        self.search_type.setAccessibleName("Тип поиска подстрок")
+        for rule in RULES:
+            self.search_type.addItem(rule.title)
+            self.search_type.setItemData(self.search_type.count() - 1, rule.description, Qt.ToolTipRole)
+        self.search_type.currentIndexChanged.connect(self.on_search_type_changed)
+        search_toolbar.addWidget(self.search_type)
+        search_toolbar.addAction(self.search_action)
     
     # ========== РАБОТА С ФАЙЛАМИ ==========
     
@@ -289,6 +309,8 @@ class TextEditor(QMainWindow):
     
     def on_text_changed(self):
         """Обработчик изменения текста"""
+        if self.result_mode == "search":
+            self.clear_search_results("Текст изменён. Запустите поиск повторно.")
         if not self.is_modified:
             self.is_modified = True
             if self.current_file:
@@ -344,6 +366,11 @@ class TextEditor(QMainWindow):
         self.analysis_status.setText(f"Лексем: {len(tokens)}. Общее количество ошибок: {len(errors)}")
 
     def prepare_results(self, headers):
+        self.result_mode = None
+        self.editor.setExtraSelections([])
+        cursor = self.editor.textCursor()
+        cursor.clearSelection()
+        self.editor.setTextCursor(cursor)
         self.result_table.clear()
         self.result_table.setRowCount(0)
         self.result_table.setColumnCount(len(headers))
@@ -372,6 +399,59 @@ class TextEditor(QMainWindow):
             message += ". Синтаксис корректен, ошибок нет."
         self.analysis_status.setText(message)
 
+    def clear_search_results(self, message):
+        self.editor.setExtraSelections([])
+        cursor = self.editor.textCursor()
+        cursor.clearSelection()
+        self.editor.setTextCursor(cursor)
+        self.result_table.setRowCount(0)
+        self.analysis_status.setText(message)
+
+    def on_search_type_changed(self):
+        if self.result_mode == "search":
+            self.clear_search_results("Тип поиска изменён. Запустите поиск повторно.")
+
+    def run_regex_search(self):
+        self.prepare_results(["Найденная подстрока", "Начальная позиция", "Длина"])
+        self.result_mode = "search"
+        text = self.editor.toPlainText()
+        if not text.strip():
+            self.analysis_status.setText("Нет данных для поиска")
+            return
+        matches = find_matches(text, self.search_type.currentIndex())
+        self.result_table.setRowCount(len(matches))
+        for row, match in enumerate(matches):
+            item = QTableWidgetItem(match.fragment)
+            item.setData(Qt.UserRole, ("match", match.start, match.length))
+            self.result_table.setItem(row, 0, item)
+            self.result_table.setItem(row, 1, QTableWidgetItem(
+                f"строка {match.line}, символ {match.column}"))
+            length_item = QTableWidgetItem()
+            length_item.setData(Qt.DisplayRole, match.length)
+            self.result_table.setItem(row, 2, length_item)
+        self.analysis_status.setText(f"Найдено совпадений: {len(matches)}")
+
+    def on_result_selection_changed(self):
+        if self.result_mode == "search":
+            rows = self.result_table.selectionModel().selectedRows()
+            if rows:
+                self.on_table_item_clicked(self.result_table.item(rows[0].row(), 0))
+
+    def highlight_match(self, start, length):
+        text = self.editor.toPlainText()
+        qt_start = len(text[:start].encode("utf-16-le")) // 2
+        qt_end = qt_start + len(text[start:start + length].encode("utf-16-le")) // 2
+        cursor = self.editor.textCursor()
+        cursor.setPosition(qt_start)
+        cursor.setPosition(qt_end, QTextCursor.KeepAnchor)
+        self.editor.setTextCursor(cursor)
+        selection = QTextEdit.ExtraSelection()
+        selection.cursor = cursor
+        selection.format.setBackground(QColor("#ffe082"))
+        selection.format.setForeground(QColor("#202020"))
+        self.editor.setExtraSelections([selection])
+        self.editor.ensureCursorVisible()
+
     def on_table_item_clicked(self, item):
         """Обработка клика по элементу таблицы для навигации"""
         row = item.row()
@@ -380,6 +460,10 @@ class TextEditor(QMainWindow):
             return
         data = first_item.data(Qt.UserRole)
         if not data:
+            return
+
+        if isinstance(data, (tuple, list)) and len(data) == 3 and data[0] == "match":
+            self.highlight_match(data[1], data[2])
             return
 
         # Синтаксический режим: данные = (line, col)
@@ -448,6 +532,14 @@ class TextEditor(QMainWindow):
             <li><b>Клик по ошибке</b> - перемещает курсор к месту ошибки</li>
         </ul>
         
+        <h3>Поиск подстрок — ЛР4</h3>
+        <p>Выберите HEX-цвет, юзернейм или пароль на панели «Тип поиска», затем нажмите
+        «Поиск подстрок» на панели или в меню «Пуск». Таблица показывает фрагмент,
+        строку, символ и длину. Выберите строку мышью или клавиатурой для подсветки.
+        После изменения текста или типа поиска выполните поиск повторно.</p>
+        <p>HEX: шесть цифр, # необязателен. Юзернейм: 8–16 символов a–z, 0–9, _, -.
+        Пароли разделяются пробелами и переводами строк; длина от 14 символов,
+        русские буквы обоих регистров, цифра и специальный символ.</p>
         <h3>Распознаваемые лексемы</h3>
         <ul>
             <li><b>Ключевые слова</b>: if, else, while, for, int, float, return и др.</li>
@@ -479,7 +571,7 @@ class TextEditor(QMainWindow):
             "О программе",
             "<h1>Текстовый редактор с лексическим анализатором</h1>"
             "<p>Версия: 2.0.0</p>"
-            "<p>Лабораторные работы №1–3</p>"
+            "<p>Лабораторные работы №1–4</p>"
             "<p>Текстовый редактор с графическим интерфейсом и лексическим анализатором</p>"
             "<p>Разработчик: Базыкина Диана</p>"
             "<p>2026</p>"

@@ -1,0 +1,15 @@
+HEX: #A1b2C3 abcdef 000000 #FFFFFF
+Не HEX: #12345 #1234567 #12345678 #GG0000 wordABCDEF
+Юзернеймы: abcd1234 user_name-01 abcdefghijklmnop
+Не юзернеймы: abc1234 Abcd1234 abcdefghijklmnopq
+Пароли (только учебные примеры):
+Ая1!xxxxxxxxxx
+Ёё1_xxxxxxxxxx
+ПарольНадежный1!
+Не проходят проверку:
+Ая1!xxxxxxxxx
+АА1!xxxxxxxxxx
+яя1!xxxxxxxxxx
+Аяa!xxxxxxxxxx
+Ая1axxxxxxxxxx
+Aa1!xxxxxxxxxx
