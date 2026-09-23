@@ -1,17 +1,20 @@
-import sys
+from pathlib import Path
 from PySide6.QtWidgets import (QMainWindow, QSplitter, QTextEdit,
                                QFileDialog, QMessageBox, QDialog, QVBoxLayout,
                                QLabel, QPushButton, QTextBrowser, QTableWidget,
                                QTableWidgetItem, QHeaderView, QComboBox, QGroupBox, QPlainTextEdit)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QIcon, QTextCursor, QColor
-from syntax_parser import Parser, SyntaxError
+from text_editor.compiler.syntax_parser import Parser, SyntaxError
 
-from regex_search import RULES, find_matches
-from semantic_analyzer import analyze_text
-from scanner import Scanner
-from grammar import SYNTAX_GRAMMAR, SEMANTIC_GRAMMAR
+from text_editor.regex_search import RULES, find_matches
+from text_editor.compiler.semantic_analyzer import analyze_text
+from text_editor.compiler.scanner import Scanner
+from text_editor.compiler.grammar import SYNTAX_GRAMMAR, SEMANTIC_GRAMMAR
 from html import escape
+
+
+ICONS_DIR = Path(__file__).resolve().parents[1] / "resources" / "icons"
 
 
 class TextEditor(QMainWindow):
@@ -30,7 +33,7 @@ class TextEditor(QMainWindow):
         self.scanner = Scanner()
         
         # Установка иконки приложения
-        app_icon = QIcon("static/Приложение.png")
+        app_icon = self.load_icon("Приложение")
         self.setWindowIcon(app_icon)
 
         # ========== СОЗДАЕМ ИНТЕРФЕЙС ==========
@@ -85,10 +88,8 @@ class TextEditor(QMainWindow):
         self.statusBar().addWidget(self.analysis_status, 1)
     
     def load_icon(self, name):
-        """Загрузка иконки из папки static"""
-        icon_path = f"static/{name}.png"
-        icon = QIcon(icon_path)
-        return icon
+        """Путь к ресурсам не зависит от рабочей папки запуска."""
+        return QIcon(str(ICONS_DIR / f"{name}.png"))
     
     def create_menus(self):
         """Создание главного меню"""

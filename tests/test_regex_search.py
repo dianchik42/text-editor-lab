@@ -1,7 +1,7 @@
 import os
 import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from regex_search import find_matches
+from text_editor.regex_search import find_matches
 
 
 class RegexSearchTests(unittest.TestCase):
@@ -67,7 +67,7 @@ class SearchInterfaceTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
-        from editor import TextEditor
+        from text_editor.ui.editor import TextEditor
         self.window = TextEditor()
 
     def tearDown(self):

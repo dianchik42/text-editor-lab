@@ -4,7 +4,7 @@
 завершаемого нетерминала; исходный текст не изменяется.
 """
 from dataclasses import dataclass
-from ast_nodes import ProgramNode, VariableDeclNode, make_expression
+from text_editor.compiler.ast_nodes import ProgramNode, VariableDeclNode, make_expression
 
 
 @dataclass

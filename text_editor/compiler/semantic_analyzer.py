@@ -2,9 +2,9 @@
 from dataclasses import dataclass
 import math
 import re
-from ast_nodes import ProgramNode
-from scanner import Scanner
-from syntax_parser import Parser, SyntaxError
+from text_editor.compiler.ast_nodes import ProgramNode
+from text_editor.compiler.scanner import Scanner
+from text_editor.compiler.syntax_parser import Parser, SyntaxError
 
 
 @dataclass(frozen=True)

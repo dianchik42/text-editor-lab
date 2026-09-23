@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtWidgets import QApplication
-from editor import TextEditor
+from text_editor.ui.editor import TextEditor
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

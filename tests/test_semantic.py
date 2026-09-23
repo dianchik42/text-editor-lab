@@ -3,9 +3,9 @@ import math
 import os
 import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from scanner import Scanner
-from syntax_parser import Parser
-from semantic_analyzer import SemanticAnalyzer, SymbolTable, analyze_text
+from text_editor.compiler.scanner import Scanner
+from text_editor.compiler.syntax_parser import Parser
+from text_editor.compiler.semantic_analyzer import SemanticAnalyzer, SymbolTable, analyze_text
 
 
 class SemanticTests(unittest.TestCase):
@@ -117,7 +117,7 @@ class SemanticInterfaceTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def test_ast_errors_navigation_clear_and_modes(self):
-        from editor import TextEditor
+        from text_editor.ui.editor import TextEditor
         w = TextEditor()
         try:
             w.editor.setPlainText('double x=1e2;\ndouble x=2e2;')

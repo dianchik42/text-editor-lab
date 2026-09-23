@@ -1,8 +1,8 @@
 import os
 import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from scanner import Scanner
-from syntax_parser import Parser
+from text_editor.compiler.scanner import Scanner
+from text_editor.compiler.syntax_parser import Parser
 
 
 def analyze(text):
@@ -74,8 +74,26 @@ class InterfaceTests(unittest.TestCase):
         from PySide6.QtWidgets import QApplication
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_icons_when_started_from_another_directory(self):
+        import tempfile
+        from text_editor.ui.editor import TextEditor
+        previous_directory = os.getcwd()
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                os.chdir(directory)
+                window = TextEditor()
+                try:
+                    self.assertFalse(window.windowIcon().isNull())
+                    for name in ("Файл", "Правка", "Текст", "Пуск", "Справка"):
+                        self.assertFalse(window.load_icon(name).isNull(), name)
+                finally:
+                    window.close()
+                    os.chdir(previous_directory)
+        finally:
+            os.chdir(previous_directory)
+
     def test_analysis_switch_navigation_and_clear(self):
-        from editor import TextEditor
+        from text_editor.ui.editor import TextEditor
         window = TextEditor()
         window.editor.setPlainText('double x=1e2;\n' + ' ' * 180 + 'double y=2;')
         window.run_syntax_analyzer()

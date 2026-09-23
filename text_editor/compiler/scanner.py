@@ -1,5 +1,5 @@
 import re
-from grammar import (
+from text_editor.compiler.grammar import (
     KEYWORDS, OPERATORS, DELIMITERS, TOKEN_TYPES,
     STRING_PATTERN, CHAR_PATTERN, IDENTIFIER_PATTERN
 )
