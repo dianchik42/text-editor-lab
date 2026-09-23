@@ -2,14 +2,15 @@ import sys
 from PySide6.QtWidgets import (QMainWindow, QSplitter, QTextEdit,
                                QFileDialog, QMessageBox, QDialog, QVBoxLayout,
                                QLabel, QPushButton, QTextBrowser, QTableWidget,
-                               QTableWidgetItem, QHeaderView, QComboBox)
+                               QTableWidgetItem, QHeaderView, QComboBox, QGroupBox, QPlainTextEdit)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QIcon, QTextCursor, QColor
 from syntax_parser import Parser, SyntaxError
 
 from regex_search import RULES, find_matches
+from semantic_analyzer import analyze_text
 from scanner import Scanner
-from grammar import SYNTAX_GRAMMAR
+from grammar import SYNTAX_GRAMMAR, SEMANTIC_GRAMMAR
 from html import escape
 
 
@@ -62,12 +63,25 @@ class TextEditor(QMainWindow):
         self.result_table.setSelectionMode(QTableWidget.SingleSelection)
         
         splitter.addWidget(self.editor)
-        splitter.addWidget(self.result_table)
+        output_splitter = QSplitter(Qt.Vertical)
+        output_splitter.addWidget(self.result_table)
+        self.ast_panel = QGroupBox("AST — корректные объявления (JSON)")
+        ast_layout = QVBoxLayout(self.ast_panel)
+        self.ast_view = QPlainTextEdit()
+        self.ast_view.setReadOnly(True)
+        self.ast_view.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.ast_view.setAccessibleName("Абстрактное синтаксическое дерево")
+        ast_layout.addWidget(self.ast_view)
+        output_splitter.addWidget(self.ast_panel)
+        output_splitter.setSizes([240, 400])
+        self.ast_panel.hide()
+        splitter.addWidget(output_splitter)
         
         splitter.setSizes([500, 500])
         
         self.setCentralWidget(splitter)
         self.analysis_status = QLabel("Анализ ещё не выполнен")
+        self.analysis_status.setWordWrap(True)
         self.statusBar().addWidget(self.analysis_status, 1)
     
     def load_icon(self, name):
@@ -177,6 +191,10 @@ class TextEditor(QMainWindow):
         self.syntax_action = QAction("Синтаксический анализ", self)
         self.syntax_action.triggered.connect(self.run_syntax_analyzer)
         self.start_menu.addAction(self.syntax_action)
+        self.semantic_action = QAction("Семантический анализ и AST", self)
+        self.semantic_action.setShortcut("F6")
+        self.semantic_action.triggered.connect(self.run_semantic_analyzer)
+        self.start_menu.addAction(self.semantic_action)
         self.search_action = QAction("Поиск подстрок", self)
         self.search_action.triggered.connect(self.run_regex_search)
         self.start_menu.addAction(self.search_action)
@@ -227,6 +245,8 @@ class TextEditor(QMainWindow):
         self.search_type.currentIndexChanged.connect(self.on_search_type_changed)
         search_toolbar.addWidget(self.search_type)
         search_toolbar.addAction(self.search_action)
+        search_toolbar.addSeparator()
+        search_toolbar.addAction(self.semantic_action)
     
     # ========== РАБОТА С ФАЙЛАМИ ==========
     
@@ -309,8 +329,12 @@ class TextEditor(QMainWindow):
     
     def on_text_changed(self):
         """Обработчик изменения текста"""
-        if self.result_mode == "search":
-            self.clear_search_results("Текст изменён. Запустите поиск повторно.")
+        if self.result_mode in ("search", "semantic"):
+            semantic = self.result_mode == "semantic"
+            self.clear_search_results("Текст изменён. Запустите анализ повторно." if semantic
+                                      else "Текст изменён. Запустите поиск повторно.")
+            if semantic:
+                self.ast_view.clear()
         if not self.is_modified:
             self.is_modified = True
             if self.current_file:
@@ -367,6 +391,8 @@ class TextEditor(QMainWindow):
 
     def prepare_results(self, headers):
         self.result_mode = None
+        self.ast_view.clear()
+        self.ast_panel.hide()
         self.editor.setExtraSelections([])
         cursor = self.editor.textCursor()
         cursor.clearSelection()
@@ -397,6 +423,31 @@ class TextEditor(QMainWindow):
         message = f"Общее количество ошибок: {len(errors)}"
         if not errors:
             message += ". Синтаксис корректен, ошибок нет."
+        self.analysis_status.setText(message)
+
+    def run_semantic_analyzer(self):
+        self.prepare_results(["Неверный фрагмент", "Местоположение", "Описание ошибки"])
+        self.result_mode = "semantic"
+        result = analyze_text(self.editor.toPlainText())
+        self.ast_view.setPlainText(result.ast.to_json())
+        self.ast_panel.show()
+        errors = result.errors
+        self.result_table.setRowCount(len(errors))
+        for row, error in enumerate(errors):
+            item = QTableWidgetItem(error.fragment)
+            item.setData(Qt.UserRole, (error.line, error.col))
+            self.result_table.setItem(row, 0, item)
+            self.result_table.setItem(row, 1, QTableWidgetItem(
+                f"строка {error.line}, символ {error.col}"))
+            self.result_table.setItem(row, 2, QTableWidgetItem(error.description))
+        self.result_table.resizeRowsToContents()
+        message = (f"Общее количество ошибок: {len(errors)} "
+                   f"(лексических: {len(result.lexical_errors)}, "
+                   f"синтаксических: {len(result.syntax_errors)}, "
+                   f"семантических: {len(result.semantic_errors)}). "
+                   f"Объявлений в AST: {len(result.ast.children)}")
+        if not errors:
+            message += ". Ошибок нет."
         self.analysis_status.setText(message)
 
     def clear_search_results(self, message):
@@ -532,6 +583,13 @@ class TextEditor(QMainWindow):
             <li><b>Клик по ошибке</b> - перемещает курсор к месту ошибки</li>
         </ul>
         
+        <h3>Семантический анализ и AST — ЛР5</h3>
+        <p>Пуск → Семантический анализ и AST (F6). Пример:
+        double x = 1e2; double y = -x; Проверяются повторные имена, типы,
+        диапазон double и обращения к ранее объявленным переменным.
+        AST в формате JSON содержит только корректные объявления.
+        Строки и true/false распознаются для диагностики несовместимого типа.
+        Все объявления принадлежат одной области видимости.</p>
         <h3>Поиск подстрок — ЛР4</h3>
         <p>Выберите HEX-цвет, юзернейм или пароль на панели «Тип поиска», затем нажмите
         «Поиск подстрок» на панели или в меню «Пуск». Таблица показывает фрагмент,
@@ -571,7 +629,7 @@ class TextEditor(QMainWindow):
             "О программе",
             "<h1>Текстовый редактор с лексическим анализатором</h1>"
             "<p>Версия: 2.0.0</p>"
-            "<p>Лабораторные работы №1–4</p>"
+            "<p>Лабораторные работы №1–5</p>"
             "<p>Текстовый редактор с графическим интерфейсом и лексическим анализатором</p>"
             "<p>Разработчик: Базыкина Диана</p>"
             "<p>2026</p>"
@@ -606,7 +664,7 @@ class TextEditor(QMainWindow):
         layout = QVBoxLayout()
         
         text = QTextBrowser()
-        text.setHtml("<h1>Грамматика ЛР3</h1><pre>" + escape(SYNTAX_GRAMMAR) + "</pre>")
+        text.setHtml("<h1>Грамматика ЛР3</h1><pre>" + escape(SYNTAX_GRAMMAR) + "</pre><h2>ЛР5</h2><pre>" + escape(SEMANTIC_GRAMMAR) + "</pre>")
 
         layout.addWidget(text)
         

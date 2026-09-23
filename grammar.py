@@ -78,3 +78,13 @@ Declaration → double IDENTIFIER = Sign SCIENTIFIC ;
 Sign → + | - | ε
 IDENTIFIER → [a-zA-Z_][a-zA-Z0-9_]* (кроме ключевых слов)
 SCIENTIFIC → ([0-9]+(\.[0-9]*)?|\.[0-9]+)[eE][+-]?[0-9]+"""
+
+SEMANTIC_GRAMMAR = """Расширение ЛР5 (отдельный режим):
+Program → Declaration Rest
+Rest → Declaration Rest | ε
+Declaration → double IDENTIFIER = Sign Value ;
+Sign → + | - | ε
+Value → SCIENTIFIC | IDENTIFIER | STRING | true | false
+Тип STRING и boolean проверяется семантически: присваивание double запрещено.
+IDENTIFIER исключает ключевые слова и true, false, null.
+Одна общая область видимости; вложенных блоков и бинарных операций нет."""

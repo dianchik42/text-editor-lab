@@ -1,0 +1,3 @@
+double x = 1.23e+4;
+double y = -x;
+double tiny = 4.9e-324;

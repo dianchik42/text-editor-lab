@@ -4,6 +4,7 @@
 завершаемого нетерминала; исходный текст не изменяется.
 """
 from dataclasses import dataclass
+from ast_nodes import ProgramNode, VariableDeclNode, make_expression
 
 
 @dataclass
@@ -15,9 +16,11 @@ class SyntaxError:
 
 
 class Parser:
-    def __init__(self, tokens, text=None):
+    def __init__(self, tokens, text=None, semantic=False):
         self.tokens = tokens
         self.text = text
+        self.semantic = semantic
+        self.ast = ProgramNode()
         self.pos = 0
         self.errors = []
 
@@ -62,6 +65,7 @@ class Parser:
         return None
 
     def parse_program(self):
+        self.ast = ProgramNode()
         self.pos = 0
         self.errors = []
         if not self.tokens:
@@ -74,18 +78,29 @@ class Parser:
         return not self.errors and not any(t.type == 'UNKNOWN' for t in self.tokens)
 
     def parse_statement(self):
+        start, error_count = self.pos, len(self.errors)
         boundary = lambda t: t.lexeme in (';', 'double')
-        number = lambda t: t.type in ('INTEGER', 'FLOAT', 'SCIENTIFIC', 'UNKNOWN')
-        self.expect(lambda t: t.lexeme == 'double', "Ожидалось ключевое слово double",
+        number = lambda t: (t.type in ('INTEGER', 'FLOAT', 'SCIENTIFIC', 'UNKNOWN')
+                            or (self.semantic and t.type in ('IDENTIFIER', 'STRING')))
+        type_token = self.expect(lambda t: t.lexeme == 'double', "Ожидалось ключевое слово double",
                     lambda t: t.type == 'IDENTIFIER' or t.lexeme in ('=', '+', '-', ';') or number(t))
-        self.expect(lambda t: t.type == 'IDENTIFIER', "Ожидался идентификатор",
+        name = self.expect(lambda t: t.type == 'IDENTIFIER' and t.lexeme not in ('true', 'false', 'null'),
+                    "Ожидался идентификатор",
                     lambda t: boundary(t) or t.lexeme in ('=', '+', '-') or number(t))
         self.expect(lambda t: t.lexeme == '=', "Ожидался знак =",
                     lambda t: boundary(t) or t.lexeme in ('+', '-') or number(t))
+        sign = None
         if self.current_token() and self.current_token().lexeme in ('+', '-'):
+            sign = self.current_token()
             self.pos += 1
-        token = self.expect(number, "Ожидалось число в научной нотации", boundary)
-        if token and token.type != 'UNKNOWN' and token.type != 'SCIENTIFIC':
+        token = self.expect(number, "Ожидалось значение" if self.semantic else "Ожидалось число в научной нотации", boundary)
+        if token and token.type in ('INTEGER', 'FLOAT'):
             self.add_error("Ожидалась экспонента e/E и целый показатель степени", token)
+        if token and self.semantic and token.lexeme == 'null':
+            self.add_error("В этой грамматике null не поддерживается", token)
         self.expect(lambda t: t.lexeme == ';', "Ожидалась точка с запятой ;",
                     lambda t: t.lexeme == 'double' or t.type == 'IDENTIFIER')
+        valid = (len(self.errors) == error_count and type_token and name and token
+                 and not any(t.type == 'UNKNOWN' for t in self.tokens[start:self.pos]))
+        if valid:
+            self.ast.children.append(VariableDeclNode(name, type_token, make_expression(token, sign)))
