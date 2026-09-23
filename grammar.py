@@ -71,3 +71,10 @@ IDENTIFIER_PATTERN = r'[a-zA-Z_][a-zA-Z0-9_]*'
 
 # Комментарии
 COMMENT_PATTERN = r'//[^\n]*|/\*.*?\*/'
+# Грамматика ЛР3 над токенами; определения лексем приведены ниже.
+SYNTAX_GRAMMAR = r"""Program → Declaration Rest
+Rest → Declaration Rest | ε
+Declaration → double IDENTIFIER = Sign SCIENTIFIC ;
+Sign → + | - | ε
+IDENTIFIER → [a-zA-Z_][a-zA-Z0-9_]* (кроме ключевых слов)
+SCIENTIFIC → ([0-9]+(\.[0-9]*)?|\.[0-9]+)[eE][+-]?[0-9]+"""

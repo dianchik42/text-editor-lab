@@ -5,9 +5,11 @@ from PySide6.QtWidgets import (QMainWindow, QSplitter, QTextEdit,
                                QTableWidgetItem, QHeaderView)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QIcon, QTextCursor
-from syntax_parser import Parser
+from syntax_parser import Parser, SyntaxError
 
-from scanner import Scanner, Token, LexicalError
+from scanner import Scanner
+from grammar import SYNTAX_GRAMMAR
+from html import escape
 
 
 class TextEditor(QMainWindow):
@@ -41,6 +43,7 @@ class TextEditor(QMainWindow):
         self.editor = QTextEdit()
         self.editor.setPlaceholderText("Введите текст здесь")
         self.editor.setUndoRedoEnabled(True)
+        self.editor.setAcceptRichText(False)
         self.editor.textChanged.connect(self.on_text_changed)
         
         # Правая панель: таблица результатов
@@ -59,6 +62,8 @@ class TextEditor(QMainWindow):
         splitter.setSizes([500, 500])
         
         self.setCentralWidget(splitter)
+        self.analysis_status = QLabel("Анализ ещё не выполнен")
+        self.statusBar().addWidget(self.analysis_status, 1)
     
     def load_icon(self, name):
         """Загрузка иконки из папки static"""
@@ -304,16 +309,15 @@ class TextEditor(QMainWindow):
         """Запуск лексического анализатора"""
         text = self.editor.toPlainText()
         
-        if not text.strip():
-            QMessageBox.information(self, "Анализатор", "Нет текста для анализа")
-            return
-        
+        self.prepare_results(["Код", "Тип", "Лексема", "Позиция"])
         # Запускаем сканер
         tokens, errors = self.scanner.scan(text)
         
         # Заполняем таблицу результатов
         self.result_table.setRowCount(len(tokens) + len(errors))
         
+        tokens = [t for t in tokens if t.type != "UNKNOWN"]
+        self.result_table.setRowCount(len(tokens) + len(errors))
         row = 0
         # Токены
         for token in tokens:
@@ -337,50 +341,36 @@ class TextEditor(QMainWindow):
             self.result_table.item(row, 0).setData(Qt.UserRole, ('error', error.line, error.col))
             row += 1
         
-        # Показываем сообщение о результатах
-        QMessageBox.information(
-            self, 
-            "Анализ завершен",
-            f"Найдено лексем: {len(tokens)}\nОшибок: {len(errors)}"
-        )
-    
-    def run_syntax_analyzer(self):
-        """Запуск синтаксического анализатора"""
-        text = self.editor.toPlainText()
-        if not text.strip():
-            QMessageBox.information(self, "Синтаксический анализ", "Нет текста для анализа")
-            return
+        self.analysis_status.setText(f"Лексем: {len(tokens)}. Общее количество ошибок: {len(errors)}")
 
-        # Лексический анализ
-        tokens, lex_errors = self.scanner.scan(text)
-        if lex_errors:
-            QMessageBox.warning(self, "Ошибка", "Присутствуют лексические ошибки. Исправьте их сначала.")
-            return
-
-        # Синтаксический анализ
-        parser = Parser(tokens)
-        success = parser.parse_program()
-        errors = parser.errors
-
-        # Очищаем таблицу и настраиваем для трёх столбцов
+    def prepare_results(self, headers):
         self.result_table.clear()
-        self.result_table.setColumnCount(3)
-        self.result_table.setHorizontalHeaderLabels(["Неверный фрагмент", "Местоположение", "Описание ошибки"])
+        self.result_table.setRowCount(0)
+        self.result_table.setColumnCount(len(headers))
+        self.result_table.setHorizontalHeaderLabels(headers)
         self.result_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.analysis_status.setText("Анализ выполняется…")
 
+    def run_syntax_analyzer(self):
+        """Последовательный запуск ЛР2 и ЛР3, включая ошибочный вход."""
+        self.prepare_results(["Неверный фрагмент", "Местоположение", "Описание ошибки"])
+        text = self.editor.toPlainText()
+        tokens, lex_errors = self.scanner.scan(text)
+        parser = Parser(tokens, text)
+        parser.parse_program()
+        errors = [SyntaxError(e.character, e.line, e.col, "Лексическая ошибка: " + e.message)
+                  for e in lex_errors] + parser.errors
+        errors.sort(key=lambda e: (e.line, e.col))
         self.result_table.setRowCount(len(errors))
         for row, err in enumerate(errors):
             self.result_table.setItem(row, 0, QTableWidgetItem(err.fragment))
-            location = f"строка {err.line}, позиция {err.col}"
-            self.result_table.setItem(row, 1, QTableWidgetItem(location))
+            self.result_table.setItem(row, 1, QTableWidgetItem(f"строка {err.line}, позиция {err.col}"))
             self.result_table.setItem(row, 2, QTableWidgetItem(err.description))
-            # Для навигации сохраняем (строка, колонка)
             self.result_table.item(row, 0).setData(Qt.UserRole, (err.line, err.col))
-
-        msg = f"Синтаксических ошибок: {len(errors)}"
-        if len(errors) == 0:
-            msg += "\nСинтаксис корректен."
-        QMessageBox.information(self, "Результат синтаксического анализа", msg)
+        message = f"Общее количество ошибок: {len(errors)}"
+        if not errors:
+            message += ". Синтаксис корректен, ошибок нет."
+        self.analysis_status.setText(message)
 
     def on_table_item_clicked(self, item):
         """Обработка клика по элементу таблицы для навигации"""
@@ -393,35 +383,28 @@ class TextEditor(QMainWindow):
             return
 
         # Синтаксический режим: данные = (line, col)
-        if isinstance(data, tuple) and len(data) == 2:
+        if isinstance(data, (tuple, list)) and len(data) == 2:
             line_num, col_num = data
             self.jump_to_position(line_num, col_num)
         # Лексический режим: данные = ('token', line, col) или ('error', line, col)
-        elif isinstance(data, tuple) and len(data) == 3 and data[0] in ('token', 'error'):
+        elif isinstance(data, (tuple, list)) and len(data) == 3 and data[0] in ('token', 'error'):
             line_num, col_num = data[1], data[2]
             self.jump_to_position(line_num, col_num)
     
     def jump_to_position(self, line_num, col_num):
         """Перемещает курсор на указанную строку и позицию"""
-        cursor = self.editor.textCursor()
-        
-        # Перемещаемся на начало документа
-        cursor.movePosition(QTextCursor.Start)
-        
-        # Перемещаемся на нужную строку
-        for _ in range(line_num - 1):
-            cursor.movePosition(QTextCursor.Down)
-        
-        # Перемещаемся на нужный столбец
-        cursor.movePosition(QTextCursor.Right, QTextCursor.MoveAnchor, col_num - 1)
-        
-        # Устанавливаем курсор и выделяем символ
+        block = self.editor.document().findBlockByNumber(max(0, line_num - 1))
+        if not block.isValid():
+            return
+        # Qt хранит позиции в UTF-16, сканер считает символы Python.
+        prefix = block.text()[:max(0, col_num - 1)]
+        offset = len(prefix.encode("utf-16-le")) // 2
+        cursor = QTextCursor(block)
+        cursor.setPosition(block.position() + offset)
         self.editor.setTextCursor(cursor)
         self.editor.setFocus()
-        
-        # Небольшая визуальная обратная связь
         self.editor.ensureCursorVisible()
-    
+
     # ========== ФУНКЦИИ ДЛЯ СПРАВКИ И МЕНЮ ==========
     
     def show_help(self):
@@ -458,7 +441,7 @@ class TextEditor(QMainWindow):
             <li><b>Выделить все</b> - выделить весь текст (Ctrl+A)</li>
         </ul>
         
-        <h3>Лексический анализатор</h3>
+        <h3>Анализаторы</h3><p>Пуск → Синтаксический анализ: проверка объявлений double x = 1.23e+4; с нейтрализацией ошибок. Общее количество ошибок показано в строке состояния.</p>
         <ul>
             <li><b>Пуск → Запуск анализатора</b> - выполнить лексический анализ текста</li>
             <li><b>Таблица результатов</b> - показывает все найденные лексемы и ошибки</li>
@@ -469,7 +452,7 @@ class TextEditor(QMainWindow):
         <ul>
             <li><b>Ключевые слова</b>: if, else, while, for, int, float, return и др.</li>
             <li><b>Идентификаторы</b>: буква + буквы/цифры/_</li>
-            <li><b>Числа</b>: целые, вещественные, шестнадцатеричные, двоичные</li>
+            <li><b>Числа</b>: десятичные целые, дробные и научная нотация</li>
             <li><b>Строки</b>: в двойных кавычках</li>
             <li><b>Символы</b>: в одинарных кавычках</li>
             <li><b>Операторы</b>: +, -, *, /, =, ==, !=, &&, || и др.</li>
@@ -496,7 +479,7 @@ class TextEditor(QMainWindow):
             "О программе",
             "<h1>Текстовый редактор с лексическим анализатором</h1>"
             "<p>Версия: 2.0.0</p>"
-            "<p>Лабораторная работа №1-2</p>"
+            "<p>Лабораторные работы №1–3</p>"
             "<p>Текстовый редактор с графическим интерфейсом и лексическим анализатором</p>"
             "<p>Разработчик: Базыкина Диана</p>"
             "<p>2026</p>"
@@ -511,20 +494,8 @@ class TextEditor(QMainWindow):
         layout = QVBoxLayout()
         
         text = QTextBrowser()
-        text.setHtml("""
-        <h1>Постановка задачи</h1>
-        <p>Разработать текстовый редактор с графическим интерфейсом и лексическим анализатором.</p>
-        
-        <h2>Требования к лексическому анализатору:</h2>
-        <ul>
-            <li>Выделять ключевые слова, идентификаторы, числа, операторы, разделители</li>
-            <li>Обрабатывать строки и символы</li>
-            <li>Выводить информацию о лексемах в таблицу (код, тип, значение, позиция)</li>
-            <li>Сообщать об ошибках с указанием позиции</li>
-            <li>Обеспечивать навигацию по ошибкам</li>
-        </ul>
-        """)
-        
+        text.setHtml('<h1>Лабораторная работа №3</h1><p>Синтаксический анализ объявлений double с числами в научной нотации Java. Пример: double x = 1.23e+4;</p><p>Пуск → Синтаксический анализ: лексический анализ, разбор и нейтрализация ошибок методом Айронса. Таблица показывает фрагменты, позиции и описания; щелчок перемещает курсор.</p>')
+
         layout.addWidget(text)
         
         btn = QPushButton("Закрыть")
@@ -543,29 +514,8 @@ class TextEditor(QMainWindow):
         layout = QVBoxLayout()
         
         text = QTextBrowser()
-        text.setHtml("""
-        <h1>Грамматика языка</h1>
-        <p>G = (V<sub>T</sub>, V<sub>N</sub>, P, S)</p>
-        
-        <h2>Терминалы (V<sub>T</sub>):</h2>
-        <ul>
-            <li>Ключевые слова: if, else, while, for, int, float, return...</li>
-            <li>Идентификаторы: [a-zA-Z_][a-zA-Z0-9_]*</li>
-            <li>Числа: \d+(\.\d+)?, 0x[0-9A-F]+, 0b[01]+</li>
-            <li>Операторы: +, -, *, /, =, ==, !=, &lt;, &gt;, &amp;&amp;, ||</li>
-            <li>Разделители: (, ), {, }, [, ], ;, ,</li>
-        </ul>
-        
-        <h2>Нетерминалы (V<sub>N</sub>):</h2>
-        <ul>
-            <li>program → statement*</li>
-            <li>statement → assignment | if_stmt | while_stmt | block</li>
-            <li>expression → term (('+'|'-') term)*</li>
-            <li>term → factor (('*'|'/') factor)*</li>
-            <li>factor → NUMBER | IDENTIFIER | '(' expression ')'</li>
-        </ul>
-        """)
-        
+        text.setHtml("<h1>Грамматика ЛР3</h1><pre>" + escape(SYNTAX_GRAMMAR) + "</pre>")
+
         layout.addWidget(text)
         
         btn = QPushButton("Закрыть")
@@ -584,28 +534,8 @@ class TextEditor(QMainWindow):
         layout = QVBoxLayout()
         
         text = QTextBrowser()
-        text.setHtml("""
-        <h1>Классификация грамматики</h1>
-        
-        <p><b>Тип 2 - Контекстно-свободная грамматика (КС-грамматика)</b></p>
-        
-        <h2>Обоснование:</h2>
-        <ul>
-            <li>Все правила имеют вид A → α, где A ∈ V<sub>N</sub>, α ∈ (V<sub>T</sub> ∪ V<sub>N</sub>)<sup>*</sup></li>
-            <li>Левая часть каждого правила состоит из одного нетерминала</li>
-            <li>Отсутствует зависимость от контекста</li>
-            <li>Позволяет описывать вложенные конструкции (например, блоки, выражения со скобками)</li>
-        </ul>
-        
-        <h2>Характеристики:</h2>
-        <ul>
-            <li><b>Класс по Хомскому:</b> Тип 2 (КС-грамматика)</li>
-            <li><b>Распознаватель:</b> МП-автомат (магазинный автомат)</li>
-            <li><b>Примеры языков:</b> большинство языков программирования (с учетом контекстно-свободной части)</li>
-            <li><b>Сложность разбора:</b> O(n³) в общем случае, O(n) для LL(k) и LR(k)</li>
-        </ul>
-        """)
-        
+        text.setHtml('<h1>Классификация грамматики</h1><p>Представленная грамматика — контекстно-свободная (тип 2): слева стоит один нетерминал. Она LL(1), разбор выполняется за O(n). Язык этого ограниченного варианта также регулярен и допускает эквивалентную грамматику типа 3; вложенных выражений нет.</p>')
+
         layout.addWidget(text)
         
         btn = QPushButton("Закрыть")

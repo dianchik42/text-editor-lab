@@ -98,10 +98,10 @@ class FiniteAutomaton:
             self.add_char(ch)
             
             # Распознавание начала лексемы
-            if ch.isalpha() or ch == '_':
+            if (ch.isascii() and ch.isalpha()) or ch == '_':
                 self.state = self.IDENT
                 return (False, None, None)
-            elif ch.isdigit():
+            elif ch.isascii() and ch.isdigit():
                 self.state = self.INTEGER
                 return (False, None, None)
             elif ch == '.':
@@ -120,7 +120,9 @@ class FiniteAutomaton:
             elif ch in DELIMITERS:
                 self.state = self.DELIMITER
                 # Разделители — односимвольные лексемы
-                return (True, 'DELIMITER', self.get_lexeme())
+                lexeme = self.get_lexeme()
+                self.reset()
+                return (True, 'DELIMITER', lexeme)
             elif ch.isspace():
                 # Пропускаем пробельные символы
                 self.reset()
@@ -131,7 +133,7 @@ class FiniteAutomaton:
         
         # ========== ОБРАБОТКА IDENTIFIER ==========
         elif self.state == self.IDENT:
-            if ch.isalnum() or ch == '_':
+            if (ch.isascii() and ch.isalnum()) or ch == '_':
                 self.add_char(ch)
                 return (False, None, None)
             else:
@@ -142,7 +144,7 @@ class FiniteAutomaton:
         
         # ========== ОБРАБОТКА INTEGER (целое число) ==========
         elif self.state == self.INTEGER:
-            if ch.isdigit():
+            if ch.isascii() and ch.isdigit():
                 self.add_char(ch)
                 return (False, None, None)
             elif ch == '.':
@@ -165,7 +167,7 @@ class FiniteAutomaton:
         
         # ========== ОБРАБОТКА FLOAT (вещественное число) ==========
         elif self.state == self.FLOAT:
-            if ch.isdigit():
+            if ch.isascii() and ch.isdigit():
                 self.add_char(ch)
                 return (False, None, None)
             elif ch.lower() == 'e':
@@ -182,11 +184,11 @@ class FiniteAutomaton:
         
         # ========== ОБРАБОТКА SCIENTIFIC (научная нотация после e/E) ==========
         elif self.state == self.SCIENTIFIC:
-            if ch == '+' or ch == '-':
+            if ch in ('+', '-') and self.get_lexeme()[-1:] in ('e', 'E'):
                 self.add_char(ch)
                 self.state = self.EXP_SIGN
                 return (False, None, None)
-            elif ch.isdigit():
+            elif ch.isascii() and ch.isdigit():
                 self.add_char(ch)
                 # Остаемся в состоянии SCIENTIFIC
                 return (False, None, None)
@@ -221,7 +223,7 @@ class FiniteAutomaton:
         
         # ========== ОБРАБОТКА EXP_SIGN (знак экспоненты) ==========
         elif self.state == self.EXP_SIGN:
-            if ch.isdigit():
+            if ch.isascii() and ch.isdigit():
                 self.add_char(ch)
                 self.state = self.SCIENTIFIC
                 return (False, None, None)
@@ -234,7 +236,7 @@ class FiniteAutomaton:
         # ========== ОБРАБОТКА STRING (строка) ==========
         elif self.state == self.STRING:
             self.add_char(ch)
-            if ch == '"' and len(self.current_lexeme) > 1:
+            if ch == '"' and len(self.current_lexeme) > 1 and self._quote_closed():
                 lexeme = self.get_lexeme()
                 self.reset()
                 return (True, 'STRING', lexeme)
@@ -243,7 +245,7 @@ class FiniteAutomaton:
         # ========== ОБРАБОТКА CHAR (символ) ==========
         elif self.state == self.CHAR:
             self.add_char(ch)
-            if ch == "'" and len(self.current_lexeme) > 1:
+            if ch == "'" and len(self.current_lexeme) > 1 and self._quote_closed():
                 lexeme = self.get_lexeme()
                 self.reset()
                 return (True, 'CHAR', lexeme)
@@ -268,6 +270,14 @@ class FiniteAutomaton:
         
         return (False, None, None)
     
+    def _quote_closed(self):
+        backslashes = 0
+        for ch in reversed(self.current_lexeme[:-1]):
+            if ch != "\\":
+                break
+            backslashes += 1
+        return backslashes % 2 == 0
+
     def finalize(self):
         """Завершить анализ (вызвать в конце строки)"""
         if self.state != self.START:
@@ -293,9 +303,9 @@ class FiniteAutomaton:
                         if start >= len(lexeme) or not any(c.isdigit() for c in lexeme[start:]):
                             token_type = 'UNKNOWN'
             elif self.state == self.STRING:
-                token_type = 'STRING'
+                token_type = 'UNKNOWN'
             elif self.state == self.CHAR:
-                token_type = 'CHAR'
+                token_type = 'UNKNOWN'
             elif self.state == self.OPERATOR:
                 token_type = 'OPERATOR'
             elif self.state == self.DELIMITER:
@@ -321,6 +331,7 @@ class Scanner:
         """
         self.tokens = []
         self.errors = []
+        self.automaton.reset()
         
         lines = text.split('\n')
         
@@ -343,63 +354,41 @@ class Scanner:
                 i += 1
                 continue
             
-            # Обрабатываем символ автоматом
+            # Разделитель и закрывающая кавычка потребляют текущий символ.
+            state_before = self.automaton.state
             is_complete, token_type, lexeme = self.automaton.process_char(ch, line_num, col)
-            
             if is_complete:
-                if token_type == 'UNKNOWN':
-                    # Неизвестный символ — ошибка
-                    start_col = col - len(lexeme)
-                    error = LexicalError(
-                        f"Недопустимый символ '{lexeme}'",
-                        line_num, start_col, lexeme
-                    )
-                    self.errors.append(error)
-                else:
-                    # Создаем токен
-                    start_col = col - len(lexeme)
-                    token = Token(
-                        code=TOKEN_TYPES.get(token_type, 99),
-                        type_name=token_type,
-                        lexeme=lexeme,
-                        line=line_num,
-                        start_col=start_col,
-                        end_col=col - 1
-                    )
-                    self.tokens.append(token)
-                
-                # Не увеличиваем i, так как автомат мог не потребить символ
-                # (например, при завершении лексемы текущий символ принадлежит следующей)
-                if not is_complete:
+                consumed = (state_before in (self.automaton.STRING, self.automaton.CHAR)
+                            or (state_before == self.automaton.START and token_type == 'DELIMITER'))
+                end_col = col if consumed else col - 1
+                self._append(token_type, lexeme, line_num, end_col - len(lexeme) + 1, end_col)
+                if consumed:
                     i += 1
             else:
                 i += 1
-        
+
         # Завершаем обработку строки (если осталась незавершенная лексема)
         is_complete, token_type, lexeme = self.automaton.finalize()
         if is_complete:
-            if token_type == 'UNKNOWN':
-                error = LexicalError(
-                    f"Недопустимый символ '{lexeme}'",
-                    line_num, length - len(lexeme) + 1, lexeme
-                )
-                self.errors.append(error)
-            else:
-                start_col = length - len(lexeme) + 1
-                token = Token(
-                    code=TOKEN_TYPES.get(token_type, 99),
-                    type_name=token_type,
-                    lexeme=lexeme,
-                    line=line_num,
-                    start_col=start_col,
-                    end_col=length
-                )
-                self.tokens.append(token)
-    
+            self._append(token_type, lexeme, line_num, length - len(lexeme) + 1, length)
+
+    def _append(self, token_type, lexeme, line, start, end):
+        if lexeme == '.':
+            token_type = 'DELIMITER'
+        if token_type == 'SCIENTIFIC' and not re.fullmatch(
+                r'(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)[eE][+-]?[0-9]+', lexeme):
+            token_type = 'UNKNOWN'
+        if token_type == 'UNKNOWN':
+            self.errors.append(LexicalError('Недопустимая или незавершённая лексема', line, start, lexeme))
+        # Ошибочные лексемы сохраняются: парсер видит их место во входном потоке.
+        self.tokens.append(Token(TOKEN_TYPES.get(token_type, 99), token_type, lexeme, line, start, end))
+
     def get_tokens_table_data(self):
         """Возвращает данные для отображения в таблице"""
         data = []
         for token in self.tokens:
+            if token.type == "UNKNOWN":
+                continue
             data.append([
                 token.code,
                 token.type,
