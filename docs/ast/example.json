@@ -1,0 +1,49 @@
+{
+  "node": "ProgramNode",
+  "position": {
+    "line": 1,
+    "column": 1
+  },
+  "attributes": {},
+  "children": [
+    {
+      "node": "VariableDeclNode",
+      "position": {
+        "line": 1,
+        "column": 8
+      },
+      "attributes": {
+        "name": "x",
+        "type": "double",
+        "modifiers": [],
+        "value": 12300.0
+      },
+      "children": [
+        {
+          "node": "TypeNode",
+          "position": {
+            "line": 1,
+            "column": 1
+          },
+          "attributes": {
+            "name": "double"
+          },
+          "children": []
+        },
+        {
+          "node": "ScientificLiteralNode",
+          "position": {
+            "line": 1,
+            "column": 12
+          },
+          "attributes": {
+            "type": "double",
+            "lexeme": "1.23e+4",
+            "value": 12300.0
+          },
+          "children": []
+        }
+      ]
+    }
+  ]
+}
